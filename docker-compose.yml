@@ -1,0 +1,44 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: rag-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: secret
+    volumes:
+      - mongo_data:/data/db
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    command: serve
+
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.dev
+  #   container_name: rag-app
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #   environment:
+  #     MONGODB_URI: mongodb://admin:secret@mongodb:27017
+  #     MONGODB_DB_NAME: rag_enterprise
+  #     OLLAMA_BASE_URL: http://ollama:11434
+  #     HUGGINGFACE_API_KEY: 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
+  #   depends_on:
+  #     - mongodb
+  #     - ollama
+
+volumes:
+  mongo_data:
+  ollama_data:
+    driver: local

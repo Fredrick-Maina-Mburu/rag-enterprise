@@ -1,0 +1,7 @@
+allowBuilds:
+  onnxruntime-node: false
+  postinstall-postinstall: false
+  protobufjs: false
+  sharp: true
+patchedDependencies:
+  pdf-parse@1.1.1: patches/pdf-parse@1.1.1.patch

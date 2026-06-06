@@ -1,0 +1,3 @@
+MongoDB Atlas Vector Search allows you to store and search vector embeddings.
+It integrates with popular LLM frameworks like LangChain and LlamaIndex.
+You can build RAG applications by combining vector search with LLMs.

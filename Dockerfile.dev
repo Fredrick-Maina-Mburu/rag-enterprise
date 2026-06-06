@@ -1,0 +1,25 @@
+FROM node:22-slim
+
+# Set CI environment variable to disable interactive prompts
+ENV CI=true
+
+# Install pnpm 10.6.1 (stable, no node:sqlite issues)
+RUN npm install -g pnpm@10.6.1
+
+WORKDIR /app
+
+# Copy package.json and lockfile first (for caching)
+COPY package.json pnpm-lock.yaml ./
+
+# Install dependencies with --frozen-lockfile and ignore scripts (sharp issue bypass)
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+# Copy the rest of the application
+COPY . .
+
+# Ensure a minimal Next.js page exists
+RUN mkdir -p app && echo "export default function Home() { return <div style={{padding:'2rem'}}>✅ RAG Phase 1 Ready</div>; }" > app/page.tsx
+
+EXPOSE 3000
+
+CMD ["pnpm", "dev"]

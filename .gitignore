@@ -1,0 +1,35 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# Next.js build output
+.next
+out
+
+# environment files
+.env
+.env.local
+.env*.local
+
+# Ollama model cache (large)
+model-cache
+
+# pnpm patch temporary files (but keep the patches/ folder itself? see note)
+.pnpm-patch-tmp
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+
+# misc
+*.pem
+*.temp
