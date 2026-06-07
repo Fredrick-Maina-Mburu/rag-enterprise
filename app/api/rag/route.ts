@@ -2,40 +2,45 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
 async function getEmbedding(text: string): Promise<number[]> {
-  const response = await fetch('http://localhost:11434/api/embeddings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'nomic-embed-text',
-      prompt: text,
-    }),
-  });
-  const data = await response.json();
-  return data.embedding;
+  const response = await fetch(
+    'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.HF_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs: text, options: { wait_for_model: true } }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Hugging Face embedding error: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 async function streamAnswer(question: string, context: string): Promise<ReadableStream> {
   const truncatedContext = context.slice(0, 1500);
-  const prompt = `Use only the context to answer. If unsure, say "I don't know".
+  const prompt = `Answer based ONLY on the context. If uncertain, say "I don't know".
 
-Context:
-${truncatedContext}
+Context: ${truncatedContext}
 
 Question: ${question}
 
 Answer:`;
 
-  const response = await fetch('http://localhost:11434/api/generate', {
+  const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({
-      model: 'phi3:mini',
-      prompt: prompt,
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: prompt }],
       stream: true,
-      options: {
-        num_predict: 256,
-        temperature: 0.2,
-      },
+      temperature: 0.2,
+      max_tokens: 256,
     }),
   });
 
@@ -44,7 +49,7 @@ Answer:`;
 
   const transformStream = new ReadableStream({
     async start(controller) {
-      const reader = response.body?.getReader();
+      const reader = groqResponse.body?.getReader();
       if (!reader) {
         controller.close();
         return;
@@ -57,14 +62,17 @@ Answer:`;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
         for (const line of lines) {
-          if (line.trim()) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            if (dataStr === '[DONE]') continue;
             try {
-              const parsed = JSON.parse(line);
-              if (parsed.response) {
-                controller.enqueue(encoder.encode(parsed.response));
+              const json = JSON.parse(dataStr);
+              const content = json.choices[0]?.delta?.content;
+              if (content) {
+                controller.enqueue(encoder.encode(content));
               }
-            } catch (e) {
-              // ignore
+            } catch {
+              // ignore parse errors
             }
           }
         }
@@ -93,24 +101,26 @@ export async function POST(req: NextRequest) {
     const db = client.db(process.env.MONGODB_DB_NAME);
     const collection = db.collection('documents');
 
-    const results = await collection.aggregate([
-      {
-        $vectorSearch: {
-          index: 'vector_index',
-          path: 'embedding',
-          queryVector: questionEmbedding,
-          numCandidates: 100,
-          limit: 2,
+    const results = await collection
+      .aggregate([
+        {
+          $vectorSearch: {
+            index: 'vector_index', // must be created with numDimensions: 384
+            path: 'embedding',
+            queryVector: questionEmbedding,
+            numCandidates: 100,
+            limit: 4,
+          },
         },
-      },
-      {
-        $project: {
-          text: 1,
-          source: 1,
-          score: { $meta: 'vectorSearchScore' },
+        {
+          $project: {
+            text: 1,
+            source: 1,
+            score: { $meta: 'vectorSearchScore' },
+          },
         },
-      },
-    ]).toArray();
+      ])
+      .toArray();
 
     await client.close();
 
@@ -120,16 +130,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ answer: 'No relevant documents found.', sources: [] });
     }
 
-    const context = results.map(r => r.text).join('\n\n');
+    const context = results.map((r) => r.text).join('\n\n');
     console.log(`[RAG] Context length: ${context.length} chars`);
 
     const stream = await streamAnswer(question, context);
-    const sources = results.map(r => ({
+    const sources = results.map((r) => ({
       source: r.source,
       snippet: r.text.slice(0, 200),
     }));
 
-    // Encode sources as base64 to avoid non-ASCII header issues
     const sourcesBase64 = Buffer.from(JSON.stringify(sources)).toString('base64');
 
     console.log('[RAG] Generating answer (streaming)...');

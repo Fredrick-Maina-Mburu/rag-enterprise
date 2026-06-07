@@ -2,19 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import mammoth from 'mammoth';
-import pdfParse from 'pdf-parse';   // patched version
+import pdfParse from 'pdf-parse';
 
 async function getEmbedding(text: string): Promise<number[]> {
-  const response = await fetch('http://localhost:11434/api/embeddings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'nomic-embed-text',
-      prompt: text,
-    }),
-  });
-  const data = await response.json();
-  return data.embedding;
+  const response = await fetch(
+    'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.HF_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs: text, options: { wait_for_model: true } }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Hugging Face API error: ${response.statusText}`);
+  }
+  const embedding = await response.json();
+  return embedding; // array of 384 numbers
 }
 
 export async function POST(req: NextRequest) {
@@ -45,8 +51,8 @@ export async function POST(req: NextRequest) {
 
     const docs = [{ pageContent: text, metadata: { source: file.name } }];
     const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 300,
-      chunkOverlap: 30,
+      chunkSize: 500,
+      chunkOverlap: 50,
     });
     const chunks = await splitter.splitDocuments(docs);
     console.log(`[Ingest] Split into ${chunks.length} chunks`);
@@ -58,7 +64,10 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      if (!chunk) continue;
+      if (!chunk || !chunk.pageContent) {
+        console.warn(`[Ingest] Skipping undefined or empty chunk at index ${i}`);
+        continue;
+      }
       const embedding = await getEmbedding(chunk.pageContent);
       await collection.insertOne({
         text: chunk.pageContent,
@@ -66,7 +75,7 @@ export async function POST(req: NextRequest) {
         source: file.name,
         createdAt: new Date(),
       });
-      console.log(`[Ingest] Chunk ${i+1}/${chunks.length} embedded and stored`);
+      console.log(`[Ingest] Chunk ${i + 1}/${chunks.length} embedded and stored`);
     }
 
     await client.close();
