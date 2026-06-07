@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import mammoth from 'mammoth';
-import pdfParse from 'pdf-parse';
 
 async function getEmbedding(text: string): Promise<number[]> {
   const response = await fetch(
@@ -16,15 +14,16 @@ async function getEmbedding(text: string): Promise<number[]> {
       body: JSON.stringify({ inputs: text, options: { wait_for_model: true } }),
     }
   );
-  if (!response.ok) {
-    throw new Error(`Hugging Face API error: ${response.statusText}`);
-  }
-  const embedding = await response.json();
-  return embedding; // array of 384 numbers
+  if (!response.ok) throw new Error(`Hugging Face error: ${response.statusText}`);
+  return await response.json();
 }
 
 export async function POST(req: NextRequest) {
   try {
+    // Lazy load heavy libraries only when the API is called (not during build)
+    const pdfParse = (await import('pdf-parse')).default;
+    const mammoth = await import('mammoth');
+
     const formData = await req.formData();
     const file = formData.get('file') as File;
     if (!file) {
@@ -64,10 +63,6 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      if (!chunk || !chunk.pageContent) {
-        console.warn(`[Ingest] Skipping undefined or empty chunk at index ${i}`);
-        continue;
-      }
       const embedding = await getEmbedding(chunk.pageContent);
       await collection.insertOne({
         text: chunk.pageContent,
