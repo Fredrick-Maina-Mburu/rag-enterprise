@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
+import { InferenceClient } from '@huggingface/inference';
+
+const hf = new InferenceClient(process.env.HF_API_KEY);
+
 async function getEmbedding(text: string): Promise<number[]> {
-  const response = await fetch(
-    'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.HF_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ inputs: text, options: { wait_for_model: true } }),
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`Hugging Face embedding error: ${response.statusText}`);
-  }
-  return await response.json();
+  const result = await hf.featureExtraction({
+    model: 'sentence-transformers/all-MiniLM-L6-v2',
+    inputs: text,
+  });
+  return result as number[];
 }
 
 async function streamAnswer(question: string, context: string): Promise<ReadableStream> {
