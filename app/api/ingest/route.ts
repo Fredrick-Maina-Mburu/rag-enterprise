@@ -25,6 +25,10 @@ export async function POST(req: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID required' }, { status: 401 });
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     console.log(`[Ingest] Starting: ${file.name} (${(buffer.length / 1024).toFixed(2)} KB)`);
@@ -64,6 +68,7 @@ export async function POST(req: NextRequest) {
         text: chunk.pageContent,
         embedding,
         source: file.name,
+        userId,
         createdAt: new Date(),
       });
       console.log(`[Ingest] Chunk ${i + 1}/${chunks.length} embedded and stored`);

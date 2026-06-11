@@ -1,6 +1,24 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 
+// No import needed
+
+function getUserId(): string {
+  // Read cookie
+  const name = 'rag_user_id=';
+  const decodedCookie = decodeURIComponent(document.cookie);
+  const ca = decodedCookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1);
+    if (c.indexOf(name) === 0) return c.substring(name.length, c.length);
+  }
+  // If not found, create new UUID
+  const newId = crypto.randomUUID();
+  document.cookie = `rag_user_id=${newId}; path=/; max-age=604800`; // 7 days
+  return newId;
+}
+
 type Message = {
   role: 'user' | 'assistant';
   content: string;
@@ -22,6 +40,7 @@ export default function Home() {
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
+    const userId = getUserId();
     const userMessage: Message = { role: 'user', content: input };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
@@ -30,7 +49,7 @@ export default function Home() {
     try {
       const res = await fetch('/api/rag', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
         body: JSON.stringify({ question: input }),
       });
 
@@ -71,6 +90,7 @@ export default function Home() {
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    const userId = getUserId();
     setUploading(true);
     setUploadStatus('Uploading...');
     let successCount = 0;
@@ -86,7 +106,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append('file', file);
       try {
-        const res = await fetch('/api/ingest', { method: 'POST', body: formData });
+        const res = await fetch('/api/ingest', { method: 'POST', headers: { 'x-user-id': userId } , body: formData });
         if (res.ok) successCount++;
         else errorCount++;
       } catch {

@@ -80,6 +80,10 @@ Answer:`;
 
 export async function POST(req: NextRequest) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID required' }, { status: 401 });
+    }
     const { question } = await req.json();
     if (!question) {
       return NextResponse.json({ error: 'No question provided' }, { status: 400 });
@@ -104,6 +108,7 @@ export async function POST(req: NextRequest) {
             queryVector: questionEmbedding,
             numCandidates: 100,
             limit: 4,
+            filter: { userId: userId },
           },
         },
         {
