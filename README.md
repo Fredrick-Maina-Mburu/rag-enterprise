@@ -61,7 +61,7 @@ The system consists of:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/[your-username]/[your-repo].git
+git clone https://github.com/Fredrick-Maina-Mburu/rag-enterprise
 cd [your-repo]
 ```
 
